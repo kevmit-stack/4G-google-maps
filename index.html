@@ -304,9 +304,8 @@
         );
 
         rows.forEach(r => {
-          <!-- Ceci est un commentaire sur une seule ligne -->
-          <!-- const color = colorFromAzimuth(r.ANT_AZIMUTH); -->
-          const color = '#23D719'; 
+          const color = colorFromAzimuth(r.ANT_AZIMUTH); 
+          <!--const color = '#23D719'; -->
           const sectorCoords = buildSector(
             r.LATITUDE,
             r.LONGITUDE,
