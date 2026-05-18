@@ -60,12 +60,18 @@
 </head>
 <body>
 
+  <div id="topbar">
+    /index.html // projection 4G sites google map
+  </div>
+
+  <div id="map"></div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
     const map = L.map('map', {
-        center: [36.7372, 3.0865],
-        zoom: 12
+    center: [36.7372, 3.0865],
+    zoom: 12
     });
 
     // Définir les couches de base
@@ -283,10 +289,10 @@
 
     async function loadSites() {
       try {
-        // 4gsites.csv doit être dans le même dossier que index.html
-        const response = await fetch('./4gsites.csv');
+        // 4gsite.csv doit être dans le même dossier que index.html
+        const response = await fetch('./4gsite.csv');
         if (!response.ok) {
-          throw new Error('Impossible de charger ./4gsites.csv');
+          throw new Error('Impossible de charger ./4gsite.csv');
         }
 
         const csvText = await response.text();
@@ -304,8 +310,7 @@
         );
 
         rows.forEach(r => {
-          const color = colorFromAzimuth(r.ANT_AZIMUTH); 
-          <!--const color = '#23D719'; -->
+          const color = colorFromAzimuth(r.ANT_AZIMUTH);
           const sectorCoords = buildSector(
             r.LATITUDE,
             r.LONGITUDE,
