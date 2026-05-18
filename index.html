@@ -70,16 +70,15 @@
 
   <script>
     const map = L.map('map', {
-    center: [36.73720, 3.08650],
-    zoom: 12
+      center: [36.73720, 3.08650], // Alger
+      zoom: 12
     });
 
     // Définir les couches de base
     var satellite = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       {
-        attribution: 'Tiles © Esri',
-        // maxZoom: 18
+        attribution: 'Tiles © Esri'
       }
     );
 
@@ -87,8 +86,7 @@
     var plan = L.tileLayer(
       'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
       {
-        attribution: '© OpenStreetMap',
-        // maxZoom: 19
+        attribution: '© OpenStreetMap'
       }
     );
 
@@ -100,8 +98,8 @@
       'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'
     );
 
-    // Afficher plan par défaut
-    plan.addTo(map);
+    // Afficher satellite par défaut
+    satellite.addTo(map);
 
     // Contrôle utilisateur
     var baseLayers = {
@@ -117,6 +115,11 @@
     L.control.layers(baseLayers, overlays, { collapsed: false }).addTo(map);
 
     const drawnGroup = L.featureGroup().addTo(map);
+
+    const NORMAL_FILL_COLOR = '#16a34a';
+    const NORMAL_BORDER_COLOR = '#166534';
+    const OMNI_FILL_COLOR = '#d7191c';
+    const OMNI_BORDER_COLOR = '#991b1b';
 
     function cleanHeader(h) {
       return String(h || '')
@@ -254,10 +257,22 @@
       return points;
     }
 
-    function colorFromAzimuth(azimuth) {
-      if (azimuth === -1) return '#d7191c';
-      const hue = ((azimuth % 360) + 360) % 360;
-      return 'hsl(' + hue + ', 85%, 50%)';
+    function getSectorStyle(azimuth) {
+      if (azimuth === -1) {
+        return {
+          color: OMNI_BORDER_COLOR,
+          fillColor: OMNI_FILL_COLOR,
+          weight: 2,
+          fillOpacity: 0.45
+        };
+      }
+
+      return {
+        color: NORMAL_BORDER_COLOR,
+        fillColor: NORMAL_FILL_COLOR,
+        weight: 2,
+        fillOpacity: 0.45
+      };
     }
 
     function popupHtml(r) {
@@ -289,8 +304,7 @@
 
     async function loadSites() {
       try {
-        // 4gsites.csv doit être dans le même dossier que index.html
-        const response = await fetch('./4gsites.csv');
+        const response = await fetch('./4gsites.csv', { cache: 'no-store' });
         if (!response.ok) {
           throw new Error('Impossible de charger ./4gsites.csv');
         }
@@ -310,8 +324,6 @@
         );
 
         rows.forEach(r => {
-          //const color = colorFromAzimuth(r.ANT_AZIMUTH);
-          const color = '#16a34a';
           const sectorCoords = buildSector(
             r.LATITUDE,
             r.LONGITUDE,
@@ -321,13 +333,9 @@
             r.NumSteps
           );
 
-          const polygon = L.polygon(sectorCoords, {
-            color: color,
-            weight: 2,
-            fillColor: color,
-            fillOpacity: 0.45
-          }).bindPopup(popupHtml(r));
+          const style = getSectorStyle(r.ANT_AZIMUTH);
 
+          const polygon = L.polygon(sectorCoords, style).bindPopup(popupHtml(r));
           polygon.addTo(drawnGroup);
 
           L.circleMarker([r.LATITUDE, r.LONGITUDE], {
@@ -339,7 +347,9 @@
           }).bindTooltip(r.CELLNAME, { direction: 'top' }).addTo(drawnGroup);
         });
 
-        //map.fitBounds(drawnGroup.getBounds().pad(0.15));
+        // IMPORTANT :
+        // on ne fait pas fitBounds pour garder l'ouverture sur Alger
+        // map.fitBounds(drawnGroup.getBounds().pad(0.15));
 
       } catch (err) {
         console.error(err);
