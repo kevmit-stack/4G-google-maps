@@ -289,10 +289,10 @@
 
     async function loadSites() {
       try {
-        // 4gsite.csv doit être dans le même dossier que index.html
-        const response = await fetch('./4gsite.csv');
+        // 4gsites.csv doit être dans le même dossier que index.html
+        const response = await fetch('./4gsites.csv');
         if (!response.ok) {
-          throw new Error('Impossible de charger ./4gsite.csv');
+          throw new Error('Impossible de charger ./4gsites.csv');
         }
 
         const csvText = await response.text();
