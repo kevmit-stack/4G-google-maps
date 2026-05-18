@@ -2,41 +2,106 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>4G Google Maps</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Projection 4G sites google map</title>
+
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
   <style>
-    html, body, #map { height: 100%; margin: 0; }
-    .popup-table { border-collapse: collapse; width: 100%; font-size: 12px; }
-    .popup-table td { padding: 4px 6px; border-bottom: 1px solid #ddd; }
-    .popup-table td:first-child { font-weight: bold; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+    }
+
+    #topbar {
+      height: 32px;
+      line-height: 32px;
+      padding: 0 8px;
+      font-size: 12px;
+      border-bottom: 1px solid #ccc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      background: #fff;
+    }
+
+    #map {
+      width: 100%;
+      height: calc(100% - 33px);
+    }
+
+    .popup-table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 12px;
+    }
+
+    .popup-table td {
+      border-bottom: 1px solid #ddd;
+      padding: 4px 6px;
+      vertical-align: top;
+    }
+
+    .popup-table td:first-child {
+      font-weight: bold;
+      white-space: nowrap;
+    }
+
+    .info-box {
+      background: white;
+      padding: 6px 8px;
+      border-radius: 4px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.25);
+      font-size: 12px;
+    }
   </style>
 </head>
 <body>
+
+  <div id="topbar">
+    /index.html // projection 4G sites google map
+  </div>
+
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <script>
-    //var map = L.map('map').setView([33.3, 3.1], 7);
-    var map = L.map('map', {
-              center: [36.7372, 3.0865],
-              zoom: 12
-              });
-    
+    const map = L.map('map', {
+      center: [36.75, 5.05],
+      zoom: 7
+    });
+
     // Définir les couches de base
-    var satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles © Esri'
-    });
+    var satellite = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {
+        attribution: 'Tiles © Esri',
+        maxZoom: 18
+      }
+    );
 
-    var plan = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap'
-    });
+    // version plan
+    var plan = L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {
+        attribution: '© OpenStreetMap',
+        maxZoom: 19
+      }
+    );
 
-    var villes = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}');
-    var routes = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}');
+    var villes = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
+    );
 
-    // Afficher satellite par défaut
-    satellite.addTo(map);
+    var routes = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'
+    );
+
+    // Afficher plan par défaut
+    plan.addTo(map);
 
     // Contrôle utilisateur
     var baseLayers = {
@@ -50,6 +115,65 @@
     };
 
     L.control.layers(baseLayers, overlays, { collapsed: false }).addTo(map);
+
+    const drawnGroup = L.featureGroup().addTo(map);
+
+    function cleanHeader(h) {
+      return String(h || '')
+        .replace(/^\uFEFF/, '')
+        .trim()
+        .toUpperCase();
+    }
+
+    function toNumber(v) {
+      const s = String(v ?? '')
+        .trim()
+        .replace(/\s/g, '')
+        .replace(',', '.');
+      const n = Number(s);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function toInt(v, defaultValue = 0) {
+      const n = parseInt(String(v ?? '').trim(), 10);
+      return Number.isFinite(n) ? n : defaultValue;
+    }
+
+    function parseCSV(text) {
+      const lines = text
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(l => l.length > 0);
+
+      if (lines.length < 2) {
+        throw new Error('CSV vide ou invalide');
+      }
+
+      const headers = lines[0].split(';').map(cleanHeader);
+
+      return lines.slice(1).map((line, index) => {
+        const cols = line.split(';').map(c => c.trim());
+        const row = {};
+        headers.forEach((h, i) => row[h] = cols[i] ?? '');
+
+        const record = {
+          CELLNAME: row.CELLNAME || ('LIGNE_' + (index + 2)),
+          NumSteps: toInt(row.NUMSTEPS, 5),
+          InnerRadius: toNumber(row.INNERRADIUS || row.INNERRADI),
+          OuterRadius: toNumber(row.OUTERRADIUS || row.OUTERRADI),
+          LATITUDE: toNumber(row.LATITUDE),
+          LONGITUDE: toNumber(row.LONGITUDE),
+          ANT_HEIGHT: toNumber(row.ANT_HEIGHT || row.ANT_HEIG),
+          ANT_AZIMUTH: toInt(row.ANT_AZIMUTH || row.ANT_AZIM, -1)
+        };
+
+        return record;
+      }).filter(r =>
+        Number.isFinite(r.LATITUDE) &&
+        Number.isFinite(r.LONGITUDE) &&
+        !(r.LATITUDE === 0 && r.LONGITUDE === 0)
+      );
+    }
 
     function toRad(deg) {
       return deg * Math.PI / 180;
@@ -80,88 +204,72 @@
     }
 
     function buildSector(lat, lon, innerRadius, outerRadius, azimuth, numSteps) {
-      const pts = [];
+      const points = [];
 
-      // cercle complet
+      if (outerRadius <= 0) {
+        return [[lat, lon]];
+      }
+
+      // cercle complet si ANT_AZIMUTH = -1
       if (azimuth === -1) {
-        const steps = Math.max(24, numSteps * 12);
+        const steps = Math.max(36, numSteps * 12);
 
         for (let i = 0; i <= steps; i++) {
           const angle = i * 360 / steps;
-          pts.push(destinationPoint(lat, lon, angle, outerRadius));
+          points.push(destinationPoint(lat, lon, angle, outerRadius));
         }
 
         if (innerRadius > 0) {
           for (let i = steps; i >= 0; i--) {
             const angle = i * 360 / steps;
-            pts.push(destinationPoint(lat, lon, angle, innerRadius));
+            points.push(destinationPoint(lat, lon, angle, innerRadius));
           }
         } else {
-          pts.push([lat, lon]);
+          points.push([lat, lon]);
         }
 
-        return pts;
+        return points;
       }
 
-      // secteur de 30°
+      // secteur 30° de largeur
       const halfWidth = 15;
       const start = azimuth - halfWidth;
       const end = azimuth + halfWidth;
       const steps = Math.max(2, numSteps);
 
       for (let i = 0; i <= steps; i++) {
-        const angle = start + (i / steps) * (end - start);
-        pts.push(destinationPoint(lat, lon, angle, outerRadius));
+        const angle = start + ((end - start) * i / steps);
+        points.push(destinationPoint(lat, lon, angle, outerRadius));
       }
 
       if (innerRadius > 0) {
         for (let i = steps; i >= 0; i--) {
-          const angle = start + (i / steps) * (end - start);
-          pts.push(destinationPoint(lat, lon, angle, innerRadius));
+          const angle = start + ((end - start) * i / steps);
+          points.push(destinationPoint(lat, lon, angle, innerRadius));
         }
       } else {
-        pts.push([lat, lon]);
+        points.push([lat, lon]);
       }
 
-      return pts;
+      return points;
     }
 
     function colorFromAzimuth(azimuth) {
-      if (azimuth === -1) return '#e11d48';
-      return `hsl(${((azimuth % 360) + 360) % 360}, 80%, 55%)`;
-    }
-
-    function parseCSV(text) {
-      const lines = text.split(/\r?\n/).filter(Boolean);
-      const headers = lines.shift().split(';').map(h => h.trim());
-
-      return lines.map(line => {
-        const cols = line.split(';').map(v => v.trim());
-        const row = {};
-        headers.forEach((h, i) => row[h] = cols[i] ?? '');
-
-        row.NumSteps = Number(row.NumSteps || 0);
-        row.InnerRadius = Number(row.InnerRadius || 0);
-        row.OuterRadius = Number(row.OuterRadius || 0);
-        row.LATITUDE = Number(row.LATITUDE || 0);
-        row.LONGITUDE = Number(row.LONGITUDE || 0);
-        row.ANT_HEIGHT = Number(row.ANT_HEIGHT || 0);
-        row.ANT_AZIMUTH = Number(row.ANT_AZIMUTH || 0);
-
-        return row;
-      });
+      if (azimuth === -1) return '#d7191c';
+      const hue = ((azimuth % 360) + 360) % 360;
+      return 'hsl(' + hue + ', 85%, 50%)';
     }
 
     function popupHtml(r) {
       return `
-        <div>
-          <b>${r.CELLNAME}</b>
+        <div style="min-width:240px">
+          <div style="font-weight:bold; margin-bottom:6px;">${r.CELLNAME}</div>
           <table class="popup-table">
             <tr><td>NumSteps</td><td>${r.NumSteps}</td></tr>
             <tr><td>InnerRadius</td><td>${r.InnerRadius} m</td></tr>
             <tr><td>OuterRadius</td><td>${r.OuterRadius} m</td></tr>
-            <tr><td>Latitude</td><td>${r.LATITUDE}</td></tr>
-            <tr><td>Longitude</td><td>${r.LONGITUDE}</td></tr>
+            <tr><td>LATITUDE</td><td>${r.LATITUDE}</td></tr>
+            <tr><td>LONGITUDE</td><td>${r.LONGITUDE}</td></tr>
             <tr><td>ANT_HEIGHT</td><td>${r.ANT_HEIGHT} m</td></tr>
             <tr><td>ANT_AZIMUTH</td><td>${r.ANT_AZIMUTH}</td></tr>
           </table>
@@ -169,48 +277,76 @@
       `;
     }
 
-    fetch('./4gsite.csv')
-      .then(r => r.text())
-      .then(text => {
-        const rows = parseCSV(text);
-        const group = L.featureGroup().addTo(map);
+    function addDebugInfo(text) {
+      const info = L.control({ position: 'bottomleft' });
+      info.onAdd = function () {
+        const div = L.DomUtil.create('div', 'info-box');
+        div.innerHTML = text;
+        return div;
+      };
+      info.addTo(map);
+    }
+
+    async function loadSites() {
+      try {
+        // 4gsite.csv doit être dans le même dossier que index.html
+        const response = await fetch('./4gsite.csv');
+        if (!response.ok) {
+          throw new Error('Impossible de charger ./4gsite.csv');
+        }
+
+        const csvText = await response.text();
+        const rows = parseCSV(csvText);
+
+        if (!rows.length) {
+          throw new Error('Aucune coordonnée valide trouvée dans le CSV');
+        }
+
+        console.log('Aperçu CSV:', rows.slice(0, 5));
+        addDebugInfo(
+          'Sites valides: <b>' + rows.length + '</b><br>' +
+          '1er site: ' + rows[0].CELLNAME + '<br>' +
+          'Lat/Lon: ' + rows[0].LATITUDE + ' ; ' + rows[0].LONGITUDE
+        );
 
         rows.forEach(r => {
-          const polygon = L.polygon(
-            buildSector(
-              r.LATITUDE,
-              r.LONGITUDE,
-              r.InnerRadius,
-              r.OuterRadius,
-              r.ANT_AZIMUTH,
-              r.NumSteps
-            ),
-            {
-              color: colorFromAzimuth(r.ANT_AZIMUTH),
-              fillColor: colorFromAzimuth(r.ANT_AZIMUTH),
-              fillOpacity: 0.35,
-              weight: 1
-            }
-          ).bindPopup(popupHtml(r));
+          const color = colorFromAzimuth(r.ANT_AZIMUTH);
+          const sectorCoords = buildSector(
+            r.LATITUDE,
+            r.LONGITUDE,
+            r.InnerRadius,
+            r.OuterRadius,
+            r.ANT_AZIMUTH,
+            r.NumSteps
+          );
 
-          polygon.addTo(group);
+          const polygon = L.polygon(sectorCoords, {
+            color: color,
+            weight: 2,
+            fillColor: color,
+            fillOpacity: 0.45
+          }).bindPopup(popupHtml(r));
+
+          polygon.addTo(drawnGroup);
 
           L.circleMarker([r.LATITUDE, r.LONGITUDE], {
             radius: 3,
-            color: '#fff',
+            color: '#000',
             weight: 1,
-            fillColor: '#000',
+            fillColor: '#fff',
             fillOpacity: 1
-          }).bindTooltip(r.CELLNAME).addTo(group);
+          }).bindTooltip(r.CELLNAME, { direction: 'top' }).addTo(drawnGroup);
         });
 
-        if (rows.length > 0) {
-          map.fitBounds(group.getBounds().pad(0.1));
-        }
-      })
-      .catch(err => {
-        alert('Erreur chargement CSV: ' + err.message);
-      });
+        map.fitBounds(drawnGroup.getBounds().pad(0.15));
+
+      } catch (err) {
+        console.error(err);
+        alert(err.message);
+      }
+    }
+
+    loadSites();
   </script>
 </body>
 </html>
