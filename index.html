@@ -521,7 +521,9 @@
           color: getCongColor(r.TYPE),
           weight: 2,
           opacity: 0.95,
-          fill: false
+          fill: true,
+          fillColor: getCongColor(r.TYPE),
+          fillOpacity: 0.15
         }).bindPopup(congPopupHtml(r)).addTo(congestionGroup);
       });
     }
