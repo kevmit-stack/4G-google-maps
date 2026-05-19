@@ -195,10 +195,10 @@
     };
 
     var overlays = {
-      "🏙️ Villes": villes,
-      "🛣️ Routes": routes,
       "📡 4G Sites": drawnGroup,
-      "🔥 Congestion": congestionGroup
+      "🔥 Congestion": congestionGroup,
+      "🏙️ Villes": villes,
+      "🛣️ Routes": routes
     };
 
     const layerControl = L.control.layers(baseLayers, overlays, { collapsed: false }).addTo(map);
