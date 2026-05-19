@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Projection 4G sites google map</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    .popup-table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 12px;
+    }
+
+    .popup-table td {
+      border-bottom: 1px solid #ddd;
+      padding: 4px 6px;
+      vertical-align: top;
+    }
+
+    .popup-table td:first-child {
+      font-weight: bold;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    const map = L.map('map', {
+      center: [36.73720, 3.08650], // Alger
+      zoom: 12,
+      preferCanvas: true
+    });
+
+    // Définir les couches de base
+    var satellite = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {
+        attribution: 'Tiles © Esri'
+      }
+    );
+
+    var plan = L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {
+        attribution: '© OpenStreetMap'
+      }
+    );
+
+    var villes = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'
+    );
+
+    var routes = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}'
+    );
+
+    plan.addTo(map);
+
+    var baseLayers = {
+      "🛰️ Satellite": satellite,
+      "🗺️ Plan": plan
+    };
+
+    var overlays = {
+      "🏙️ Villes": villes,
+      "🛣️ Routes": routes
+    };
+
+    L.control.layers(baseLayers, overlays, { collapsed: false }).addTo(map);
+
+    const drawnGroup = L.featureGroup().addTo(map);
+
+    const NORMAL_FILL_COLOR = '#16a34a';
+    const NORMAL_BORDER_COLOR = '#166534';
+    const OMNI_FILL_COLOR = '#d7191c';
+    const OMNI_BORDER_COLOR = '#991b1b';
+
+    let allRows = [];
+    let renderTimer = null;
+    let lastRenderedCount = 0;
+
+    function cleanHeader(h) {
+      return String(h || '')
+        .replace(/^\uFEFF/, '')
+        .trim()
+        .toUpperCase();
+    }
+
+    function toNumber(v) {
+      const s = String(v ?? '')
+        .trim()
+        .replace(/\s/g, '')
+        .replace(',', '.');
+      const n = Number(s);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function toInt(v, defaultValue = 0) {
+      const n = parseInt(String(v ?? '').trim(), 10);
+      return Number.isFinite(n) ? n : defaultValue;
+    }
+
+    function parseCSV(text) {
+      const lines = text
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(l => l.length > 0);
+
+      if (lines.length < 2) {
+        throw new Error('CSV vide ou invalide');
+      }
+
+      const headers = lines[0].split(';').map(cleanHeader);
+
+      return lines.slice(1).map((line, index) => {
+        const cols = line.split(';').map(c => c.trim());
+        const row = {};
+        headers.forEach((h, i) => row[h] = cols[i] ?? '');
+
+        return {
+          CELLNAME: row.CELLNAME || ('LIGNE_' + (index + 2)),
+          NumSteps: toInt(row.NUMSTEPS, 5),
+          InnerRadius: toNumber(row.INNERRADIUS || row.INNERRADI),
+          OuterRadius: toNumber(row.OUTERRADIUS || row.OUTERRADI),
+          LATITUDE: toNumber(row.LATITUDE),
+          LONGITUDE: toNumber(row.LONGITUDE),
+          ANT_HEIGHT: toNumber(row.ANT_HEIGHT || row.ANT_HEIG),
+          ANT_AZIMUTH: toInt(row.ANT_AZIMUTH || row.ANT_AZIM, -1)
+        };
+      }).filter(r =>
+        Number.isFinite(r.LATITUDE) &&
+        Number.isFinite(r.LONGITUDE) &&
+        !(r.LATITUDE === 0 && r.LONGITUDE === 0)
+      );
+    }
+
+    function toRad(deg) {
+      return deg * Math.PI / 180;
+    }
+
+    function toDeg(rad) {
+      return rad * 180 / Math.PI;
+    }
+
+    function destinationPoint(lat, lon, bearingDeg, distanceMeters) {
+      const R = 6378137;
+      const brng = toRad(bearingDeg);
+      const lat1 = toRad(lat);
+      const lon1 = toRad(lon);
+      const angDist = distanceMeters / R;
+
+      const lat2 = Math.asin(
+        Math.sin(lat1) * Math.cos(angDist) +
+        Math.cos(lat1) * Math.sin(angDist) * Math.cos(brng)
+      );
+
+      const lon2 = lon1 + Math.atan2(
+        Math.sin(brng) * Math.sin(angDist) * Math.cos(lat1),
+        Math.cos(angDist) - Math.sin(lat1) * Math.sin(lat2)
+      );
+
+      return [toDeg(lat2), ((toDeg(lon2) + 540) % 360) - 180];
+    }
+
+    function buildSector(lat, lon, innerRadius, outerRadius, azimuth, numSteps) {
+      const points = [];
+
+      if (outerRadius <= 0) {
+        return [[lat, lon]];
+      }
+
+      if (azimuth === -1) {
+        const steps = Math.max(36, numSteps * 12);
+
+        for (let i = 0; i <= steps; i++) {
+          const angle = i * 360 / steps;
+          points.push(destinationPoint(lat, lon, angle, outerRadius));
+        }
+
+        if (innerRadius > 0) {
+          for (let i = steps; i >= 0; i--) {
+            const angle = i * 360 / steps;
+            points.push(destinationPoint(lat, lon, angle, innerRadius));
+          }
+        } else {
+          points.push([lat, lon]);
+        }
+
+        return points;
+      }
+
+      const halfWidth = 15;
+      const start = azimuth - halfWidth;
+      const end = azimuth + halfWidth;
+      const steps = Math.max(2, numSteps);
+
+      for (let i = 0; i <= steps; i++) {
+        const angle = start + ((end - start) * i / steps);
+        points.push(destinationPoint(lat, lon, angle, outerRadius));
+      }
+
+      if (innerRadius > 0) {
+        for (let i = steps; i >= 0; i--) {
+          const angle = start + ((end - start) * i / steps);
+          points.push(destinationPoint(lat, lon, angle, innerRadius));
+        }
+      } else {
+        points.push([lat, lon]);
+      }
+
+      return points;
+    }
+
+    function getSectorStyle(azimuth) {
+      if (azimuth === -1) {
+        return {
+          color: OMNI_BORDER_COLOR,
+          fillColor: OMNI_FILL_COLOR,
+          weight: 2,
+          fillOpacity: 0.45
+        };
+      }
+
+      return {
+        color: NORMAL_BORDER_COLOR,
+        fillColor: NORMAL_FILL_COLOR,
+        weight: 2,
+        fillOpacity: 0.45
+      };
+    }
+
+    function popupHtml(r) {
+      return `
+        <div style="min-width:240px">
+          <div style="font-weight:bold; margin-bottom:6px;">${r.CELLNAME}</div>
+          <table class="popup-table">
+            <tr><td>NumSteps</td><td>${r.NumSteps}</td></tr>
+            <tr><td>InnerRadius</td><td>${r.InnerRadius} m</td></tr>
+            <tr><td>OuterRadius</td><td>${r.OuterRadius} m</td></tr>
+            <tr><td>LATITUDE</td><td>${r.LATITUDE}</td></tr>
+            <tr><td>LONGITUDE</td><td>${r.LONGITUDE}</td></tr>
+            <tr><td>ANT_HEIGHT</td><td>${r.ANT_HEIGHT} m</td></tr>
+            <tr><td>ANT_AZIMUTH</td><td>${r.ANT_AZIMUTH}</td></tr>
+          </table>
+        </div>
+      `;
+    }
+
+    function isVisible(row, bounds) {
+      return bounds.contains([row.LATITUDE, row.LONGITUDE]);
+    }
+
+    function renderVisibleSites() {
+      if (!allRows.length) return;
+
+      const bounds = map.getBounds();
+      const zoom = map.getZoom();
+
+      drawnGroup.clearLayers();
+
+      // Petite marge autour de la zone visible
+      const paddedBounds = bounds.pad(0.20);
+
+      // Limiter aux points visibles
+      let visibleRows = allRows.filter(r => isVisible(r, paddedBounds));
+
+      // Sécurité anti-surcharge : on coupe si trop d'objets
+      const maxFeatures = zoom >= 14 ? 4000 : zoom >= 13 ? 2500 : zoom >= 12 ? 1500 : 800;
+      if (visibleRows.length > maxFeatures) {
+        visibleRows = visibleRows.slice(0, maxFeatures);
+      }
+
+      lastRenderedCount = visibleRows.length;
+
+      visibleRows.forEach(r => {
+        // À faible zoom, afficher seulement les centres
+        if (zoom < 14) {
+          L.circleMarker([r.LATITUDE, r.LONGITUDE], {
+            radius: 2,
+            color: r.ANT_AZIMUTH === -1 ? OMNI_BORDER_COLOR : NORMAL_BORDER_COLOR,
+            weight: 1,
+            fillColor: r.ANT_AZIMUTH === -1 ? OMNI_FILL_COLOR : NORMAL_FILL_COLOR,
+            fillOpacity: 0.9
+          }).bindTooltip(r.CELLNAME, { direction: 'top' }).addTo(drawnGroup);
+          return;
+        }
+
+        // À zoom élevé, afficher secteur + point
+        const sectorCoords = buildSector(
+          r.LATITUDE,
+          r.LONGITUDE,
+          r.InnerRadius,
+          r.OuterRadius,
+          r.ANT_AZIMUTH,
+          r.NumSteps
+        );
+
+        const style = getSectorStyle(r.ANT_AZIMUTH);
+
+        L.polygon(sectorCoords, style)
+          .bindPopup(popupHtml(r))
+          .addTo(drawnGroup);
+
+        L.circleMarker([r.LATITUDE, r.LONGITUDE], {
+          radius: 3,
+          color: '#000',
+          weight: 1,
+          fillColor: '#fff',
+          fillOpacity: 1
+        }).bindTooltip(r.CELLNAME, { direction: 'top' }).addTo(drawnGroup);
+      });
+
+      console.log('Affichés:', lastRenderedCount, 'sur', allRows.length, 'zoom:', zoom);
+    }
+
+    function scheduleRender() {
+      if (renderTimer) {
+        clearTimeout(renderTimer);
+      }
+      renderTimer = setTimeout(renderVisibleSites, 120);
+    }
+
+    async function loadSites() {
+      try {
+        const response = await fetch('./4gsites.csv', { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error('Impossible de charger ./4gsites.csv');
+        }
+
+        const csvText = await response.text();
+        allRows = parseCSV(csvText);
+
+        if (!allRows.length) {
+          throw new Error('Aucune coordonnée valide trouvée dans le CSV');
+        }
+
+        console.log('Total sites chargés:', allRows.length);
+        renderVisibleSites();
+
+      } catch (err) {
+        console.error(err);
+        alert(err.message);
+      }
+    }
+
+    map.on('moveend zoomend', scheduleRender);
+
+    loadSites();
+  </script>
+</body>
+</html>
