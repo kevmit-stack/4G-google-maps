@@ -41,11 +41,33 @@
       white-space: nowrap;
     }
 
+    #mapTitle {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1001;
+      min-width: 320px;
+      max-width: 90%;
+      padding: 8px 16px;
+      text-align: center;
+      color: #ffffff;
+      font-size: 16px;
+      font-weight: bold;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.55);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+      backdrop-filter: blur(4px);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     .search-panel {
       position: absolute;
-      top: 10px;
-      left: 60px;
-      z-index: 1000;
+      bottom: 20px;
+      left: 12px;
+      z-index: 1001;
       display: flex;
       gap: 8px;
       align-items: center;
@@ -83,9 +105,18 @@
     }
 
     @media (max-width: 768px) {
+      #mapTitle {
+        top: 10px;
+        min-width: auto;
+        max-width: calc(100% - 20px);
+        font-size: 14px;
+        padding: 8px 10px;
+      }
+
       .search-panel {
         left: 10px;
         right: 10px;
+        bottom: 10px;
         width: auto;
         flex-wrap: wrap;
       }
@@ -99,18 +130,19 @@
 </head>
 <body>
 
+  <div id="mapTitle">🗺️ 4G Sites Map 🗺️- Sifeddine ALREME© - Access Network® 2026™</div>
+
   <div class="search-panel">
     <input
       type="text"
       id="cellSearch"
-      placeholder="Rechercher un SITE CODE..."
+      placeholder="Rechercher par Code Site..."
       autocomplete="off"
     />
     <button id="searchBtn" type="button">Chercher</button>
     <button id="clearSearch" type="button">Effacer</button>
   </div>
 
-  <div id="mapTitle">🗺️ 4G Sites Map 🗺️- Sifeddine ALREME© - Access Network® 2026™</div>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
