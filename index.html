@@ -15,6 +15,10 @@
       font-family: Arial, sans-serif;
     }
 
+    body {
+      position: relative;
+    }
+
     #map {
       width: 100%;
       height: 100%;
@@ -36,9 +40,75 @@
       font-weight: bold;
       white-space: nowrap;
     }
+
+    .search-panel {
+      position: absolute;
+      top: 10px;
+      left: 60px;
+      z-index: 1000;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      background: rgba(255,255,255,0.96);
+      padding: 8px 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.20);
+    }
+
+    .search-panel input {
+      width: 260px;
+      padding: 8px 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    .search-panel input:focus {
+      border-color: #166534;
+      box-shadow: 0 0 0 2px rgba(22, 101, 52, 0.15);
+    }
+
+    .search-panel button {
+      padding: 8px 10px;
+      border: 1px solid #ccc;
+      background: #fff;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .search-panel button:hover {
+      background: #f5f5f5;
+    }
+
+    @media (max-width: 768px) {
+      .search-panel {
+        left: 10px;
+        right: 10px;
+        width: auto;
+        flex-wrap: wrap;
+      }
+
+      .search-panel input {
+        width: 100%;
+        flex: 1 1 100%;
+      }
+    }
   </style>
 </head>
 <body>
+
+  <div class="search-panel">
+    <input
+      type="text"
+      id="cellSearch"
+      placeholder="Rechercher par CELLNAME..."
+      autocomplete="off"
+    />
+    <button id="searchBtn" type="button">Chercher</button>
+    <button id="clearSearch" type="button">Effacer</button>
+  </div>
 
   <div id="map"></div>
 
@@ -51,7 +121,6 @@
       preferCanvas: true
     });
 
-    // Définir les couches de base
     var satellite = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       {
@@ -97,7 +166,10 @@
 
     let allRows = [];
     let renderTimer = null;
-    let lastRenderedCount = 0;
+
+    const searchInput = document.getElementById('cellSearch');
+    const searchBtn = document.getElementById('searchBtn');
+    const clearBtn = document.getElementById('clearSearch');
 
     function cleanHeader(h) {
       return String(h || '')
@@ -273,27 +345,19 @@
     function renderVisibleSites() {
       if (!allRows.length) return;
 
-      const bounds = map.getBounds();
+      const bounds = map.getBounds().pad(0.20);
       const zoom = map.getZoom();
 
       drawnGroup.clearLayers();
 
-      // Petite marge autour de la zone visible
-      const paddedBounds = bounds.pad(0.20);
+      let visibleRows = allRows.filter(r => isVisible(r, bounds));
 
-      // Limiter aux points visibles
-      let visibleRows = allRows.filter(r => isVisible(r, paddedBounds));
-
-      // Sécurité anti-surcharge : on coupe si trop d'objets
       const maxFeatures = zoom >= 14 ? 4000 : zoom >= 13 ? 2500 : zoom >= 12 ? 1500 : 800;
       if (visibleRows.length > maxFeatures) {
         visibleRows = visibleRows.slice(0, maxFeatures);
       }
 
-      lastRenderedCount = visibleRows.length;
-
       visibleRows.forEach(r => {
-        // À faible zoom, afficher seulement les centres
         if (zoom < 14) {
           L.circleMarker([r.LATITUDE, r.LONGITUDE], {
             radius: 2,
@@ -305,7 +369,6 @@
           return;
         }
 
-        // À zoom élevé, afficher secteur + point
         const sectorCoords = buildSector(
           r.LATITUDE,
           r.LONGITUDE,
@@ -329,16 +392,60 @@
           fillOpacity: 1
         }).bindTooltip(r.CELLNAME, { direction: 'top' }).addTo(drawnGroup);
       });
-
-      console.log('Affichés:', lastRenderedCount, 'sur', allRows.length, 'zoom:', zoom);
     }
 
     function scheduleRender() {
-      if (renderTimer) {
-        clearTimeout(renderTimer);
-      }
+      if (renderTimer) clearTimeout(renderTimer);
       renderTimer = setTimeout(renderVisibleSites, 120);
     }
+
+    function findRowByCellName(term) {
+      const q = term.trim().toLowerCase();
+      if (!q) return null;
+
+      let row = allRows.find(r => r.CELLNAME.toLowerCase() === q);
+      if (row) return row;
+
+      row = allRows.find(r => r.CELLNAME.toLowerCase().includes(q));
+      return row || null;
+    }
+
+    function searchAndCenter() {
+      const term = searchInput.value.trim();
+      if (!term) return;
+
+      const row = findRowByCellName(term);
+
+      if (!row) {
+        alert('Aucun site trouvé pour : ' + term);
+        return;
+      }
+
+      map.setView([row.LATITUDE, row.LONGITUDE], 16, { animate: true });
+      scheduleRender();
+
+      setTimeout(() => {
+        L.popup()
+          .setLatLng([row.LATITUDE, row.LONGITUDE])
+          .setContent(popupHtml(row))
+          .openOn(map);
+      }, 300);
+    }
+
+    searchBtn.addEventListener('click', searchAndCenter);
+
+    searchInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        searchAndCenter();
+      }
+    });
+
+    clearBtn.addEventListener('click', function() {
+      searchInput.value = '';
+      map.closePopup();
+      scheduleRender();
+      searchInput.focus();
+    });
 
     async function loadSites() {
       try {
