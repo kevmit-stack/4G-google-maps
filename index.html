@@ -38,13 +38,7 @@
       white-space: nowrap;
     }
 
-    .info-box {
-      background: white;
-      padding: 6px 8px;
-      border-radius: 4px;
-      box-shadow: 0 1px 5px rgba(0,0,0,0.25);
-      font-size: 12px;
-    }
+    
   </style>
 </head>
 <body>
@@ -278,15 +272,7 @@
       `;
     }
 
-    function addDebugInfo(text) {
-      const info = L.control({ position: 'bottomleft' });
-      info.onAdd = function () {
-        const div = L.DomUtil.create('div', 'info-box');
-        div.innerHTML = text;
-        return div;
-      };
-      info.addTo(map);
-    }
+
 
     async function loadSites() {
       try {
@@ -303,11 +289,6 @@
         }
 
         console.log('Aperçu CSV:', rows.slice(0, 5));
-        addDebugInfo(
-          'Sites valides: <b>' + rows.length + '</b><br>' +
-          '1er site: ' + rows[0].CELLNAME + '<br>' +
-          'Lat/Lon: ' + rows[0].LATITUDE + ' ; ' + rows[0].LONGITUDE
-        );
 
         rows.forEach(r => {
           const sectorCoords = buildSector(
